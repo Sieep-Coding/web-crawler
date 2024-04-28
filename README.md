@@ -1,3 +1,8 @@
+## See it in action
+
+![](https://github.com/Sieep-Coding/web-crawler/blob/main/gif.gif)
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
