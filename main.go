@@ -112,7 +112,7 @@ func (c *Crawler) resolveURL(baseURL, href string) string {
 }
 
 func main() {
-	baseURL := "https://example.com"
+	baseURL := "https://coachtony.medium.com/" //example medium page you can scrape :)
 	depth := 2
 
 	crawler := NewCrawler(baseURL, depth)
