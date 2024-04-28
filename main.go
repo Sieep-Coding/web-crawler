@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/html"
+	"github.com/PuerkitoBio/goquery"
 )
 
 type Crawler struct {
@@ -17,6 +17,7 @@ type Crawler struct {
 	Visited map[string]bool
 	mu      sync.Mutex
 	wg      sync.WaitGroup
+	Data    map[string][]string
 }
 
 func NewCrawler(baseURL string, depth int) *Crawler {
@@ -24,6 +25,7 @@ func NewCrawler(baseURL string, depth int) *Crawler {
 		BaseURL: baseURL,
 		Depth:   depth,
 		Visited: make(map[string]bool),
+		Data:    make(map[string][]string),
 	}
 }
 
@@ -56,7 +58,7 @@ func (c *Crawler) crawlPage(pageURL string, depth int) {
 		return
 	}
 
-	doc, err := html.Parse(resp.Body)
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
 		fmt.Printf("Error parsing HTML from URL %s: %v\n", pageURL, err)
 		return
@@ -71,32 +73,29 @@ func (c *Crawler) crawlPage(pageURL string, depth int) {
 	}
 }
 
-func (c *Crawler) processPage(pageURL string, doc *html.Node) {
-	// Perform analysis or processing of the parsed HTML document
+func (c *Crawler) processPage(pageURL string, doc *goquery.Document) {
+	// Perform data extraction and processing using goquery selectors
+	title := doc.Find("title").Text()
+	headings := doc.Find("h1, h2, h3").Map(func(i int, s *goquery.Selection) string {
+		return s.Text()
+	})
+
+	c.mu.Lock()
+	c.Data[pageURL] = append(c.Data[pageURL], title)
+	c.Data[pageURL] = append(c.Data[pageURL], headings...)
+	c.mu.Unlock()
+
 	fmt.Printf("Processing page: %s\n", pageURL)
-	// ...
 }
 
-func (c *Crawler) extractLinks(doc *html.Node) []string {
+func (c *Crawler) extractLinks(doc *goquery.Document) []string {
 	var links []string
-	var f func(*html.Node)
-	f = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "a" {
-			for _, attr := range n.Attr {
-				if attr.Key == "href" {
-					link := attr.Val
-					if !strings.HasPrefix(link, "http") {
-						links = append(links, link)
-					}
-					break
-				}
-			}
+	doc.Find("a[href]").Each(func(i int, s *goquery.Selection) {
+		href, exists := s.Attr("href")
+		if exists && !strings.HasPrefix(href, "http") {
+			links = append(links, href)
 		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			f(c)
-		}
-	}
-	f(doc)
+	})
 	return links
 }
 
@@ -122,4 +121,12 @@ func main() {
 	elapsed := time.Since(start)
 
 	fmt.Printf("Crawling completed in %s\n", elapsed)
+
+	// Print the extracted data
+	for url, data := range crawler.Data {
+		fmt.Printf("URL: %s\n", url)
+		fmt.Printf("Title: %s\n", data[0])
+		fmt.Printf("Headings: %v\n", data[1:])
+		fmt.Println("------------------------")
+	}
 }
