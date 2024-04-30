@@ -12,29 +12,39 @@ import (
 )
 
 type Crawler struct {
-	BaseURL string
-	Depth   int
-	Visited map[string]bool
-	mu      sync.Mutex
-	wg      sync.WaitGroup
-	Data    map[string][]string
+	BaseURL        string
+	Depth          int
+	Visited        map[string]bool
+	mu             sync.Mutex
+	wg             sync.WaitGroup
+	Data           map[string][]string
+	MaxConcurrency int
+	Delay          time.Duration
+	UserAgent      string
 }
 
-func NewCrawler(baseURL string, depth int) *Crawler {
+func NewCrawler(baseURL string, depth int, maxConcurrency int, delay time.Duration, userAgent string) *Crawler {
 	return &Crawler{
-		BaseURL: baseURL,
-		Depth:   depth,
-		Visited: make(map[string]bool),
-		Data:    make(map[string][]string),
+		BaseURL:        baseURL,
+		Depth:          depth,
+		Visited:        make(map[string]bool),
+		Data:           make(map[string][]string),
+		MaxConcurrency: maxConcurrency,
+		Delay:          delay,
+		UserAgent:      userAgent,
 	}
 }
 
 func (c *Crawler) Crawl() {
-	c.crawlPage(c.BaseURL, 0)
+	semaphore := make(chan struct{}, c.MaxConcurrency)
+	c.crawlPage(c.BaseURL, 0, semaphore)
 	c.wg.Wait()
 }
 
-func (c *Crawler) crawlPage(pageURL string, depth int) {
+func (c *Crawler) crawlPage(pageURL string, depth int, semaphore chan struct{}) {
+	semaphore <- struct{}{}
+	defer func() { <-semaphore }()
+
 	c.wg.Add(1)
 	defer c.wg.Done()
 
@@ -46,7 +56,15 @@ func (c *Crawler) crawlPage(pageURL string, depth int) {
 	c.Visited[pageURL] = true
 	c.mu.Unlock()
 
-	resp, err := http.Get(pageURL)
+	req, err := http.NewRequest("GET", pageURL, nil)
+	if err != nil {
+		fmt.Printf("Error creating request for URL %s: %v\n", pageURL, err)
+		return
+	}
+	req.Header.Set("User-Agent", c.UserAgent)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Printf("Error fetching URL %s: %v\n", pageURL, err)
 		return
@@ -69,7 +87,10 @@ func (c *Crawler) crawlPage(pageURL string, depth int) {
 	links := c.extractLinks(doc)
 	for _, link := range links {
 		absoluteURL := c.resolveURL(pageURL, link)
-		go c.crawlPage(absoluteURL, depth+1)
+		go func(url string) {
+			time.Sleep(c.Delay)
+			c.crawlPage(url, depth+1, semaphore)
+		}(absoluteURL)
 	}
 }
 
@@ -79,10 +100,14 @@ func (c *Crawler) processPage(pageURL string, doc *goquery.Document) {
 	headings := doc.Find("h1, h2, h3").Map(func(i int, s *goquery.Selection) string {
 		return s.Text()
 	})
+	paragraphs := doc.Find("p").Map(func(i int, s *goquery.Selection) string {
+		return s.Text()
+	})
 
 	c.mu.Lock()
 	c.Data[pageURL] = append(c.Data[pageURL], title)
 	c.Data[pageURL] = append(c.Data[pageURL], headings...)
+	c.Data[pageURL] = append(c.Data[pageURL], paragraphs...)
 	c.mu.Unlock()
 
 	fmt.Printf("Processing page: %s\n", pageURL)
@@ -113,9 +138,13 @@ func (c *Crawler) resolveURL(baseURL, href string) string {
 
 func main() {
 	baseURL := "https://coachtony.medium.com/" //example medium page you can scrape :)
-	depth := 2
+	depth := 3
+	maxConcurrency := 10
+	delay := 500 * time.Millisecond
+	userAgent := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Safari/537.36"
 
-	crawler := NewCrawler(baseURL, depth)
+	crawler := NewCrawler(baseURL, depth, maxConcurrency, delay, userAgent)
+
 	start := time.Now()
 	crawler.Crawl()
 	elapsed := time.Since(start)
@@ -126,7 +155,8 @@ func main() {
 	for url, data := range crawler.Data {
 		fmt.Printf("URL: %s\n", url)
 		fmt.Printf("Title: %s\n", data[0])
-		fmt.Printf("Headings: %v\n", data[1:])
+		fmt.Printf("Headings: %v\n", data[1:len(data)-len(data)/3])
+		fmt.Printf("Paragraphs: %v\n", data[len(data)-len(data)/3:])
 		fmt.Println("------------------------")
 	}
 }
