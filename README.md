@@ -1,3 +1,8 @@
+## See it in action
+
+![](https://github.com/Sieep-Coding/web-crawler/blob/main/gif.gif)
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -25,10 +30,10 @@
  <ol>
    <li>Make sure you have Go installed on your system. You can download and install Go from the official website: <a href="https://golang.org">https://golang.org</a></li>
    <li>Clone this repository to your local machine:
-     <pre><code>git clone https://github.com/your-username/go-web-crawler.git</code></pre>
+     <pre><code>git clone https://github.com/Sieep-Coding/web-crawler.git</code></pre>
    </li>
    <li>Navigate to the project directory:
-     <pre><code>cd go-web-crawler</code></pre>
+     <pre><code>cd web-crawler</code></pre>
    </li>
    <li>Install the required dependencies:
      <pre><code>go get github.com/PuerkitoBio/goquery</code></pre>
@@ -45,19 +50,7 @@
    <li>Integrate the crawler with a database or file storage to persist the extracted data.</li>
  </ul>
 
- <h2>Contributing</h2>
- <p>Contributions are welcome! If you find any issues or have suggestions for improvements, please open an issue or submit a pull request.</p>
-
  <h2>License</h2>
- <p>This project is licensed under the <a href="LICENSE">MIT License</a>.</p>
-
- <h2>Acknowledgements</h2>
- <ul>
-   <li>The web crawler implementation is based on the concepts and techniques learned from various Go tutorials and resources.</li>
-   <li>The <code>goquery</code> package is used for parsing and extracting data from HTML documents.</li>
- </ul>
-
- <h2>Contact</h2>
- <p>For any questions or inquiries, please contact <a href="mailto:your-email@example.com">your-email@example.com</a>.</p>
+ <p>This project is licensed under the <a href="LICENSE">UNLICENSE</a>.</p>
 </body>
 </html>
