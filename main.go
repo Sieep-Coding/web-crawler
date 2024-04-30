@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/csv"
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -95,7 +97,6 @@ func (c *Crawler) crawlPage(pageURL string, depth int, semaphore chan struct{}) 
 }
 
 func (c *Crawler) processPage(pageURL string, doc *goquery.Document) {
-	// Perform data extraction and processing using goquery selectors
 	title := doc.Find("title").Text()
 	headings := doc.Find("h1, h2, h3").Map(func(i int, s *goquery.Selection) string {
 		return s.Text()
@@ -103,11 +104,45 @@ func (c *Crawler) processPage(pageURL string, doc *goquery.Document) {
 	paragraphs := doc.Find("p").Map(func(i int, s *goquery.Selection) string {
 		return s.Text()
 	})
+	metaDescription := doc.Find("meta[name='description']").AttrOr("content", "")
+	metaKeywords := doc.Find("meta[name='keywords']").AttrOr("content", "")
+	imageURLs := []string{}
+	doc.Find("img[src]").Each(func(i int, s *goquery.Selection) {
+		src, exists := s.Attr("src")
+		if exists {
+			absoluteURL := c.resolveURL(pageURL, src)
+			imageURLs = append(imageURLs, absoluteURL)
+		}
+	})
+	externalLinks := []string{}
+	doc.Find("a[href]").Each(func(i int, s *goquery.Selection) {
+		href, exists := s.Attr("href")
+		if exists && strings.HasPrefix(href, "http") && !strings.Contains(href, c.BaseURL) {
+			externalLinks = append(externalLinks, href)
+		}
+	})
+	tableData := [][]string{}
+	doc.Find("table").Each(func(i int, tableSelection *goquery.Selection) {
+		tableRows := [][]string{}
+		tableSelection.Find("tr").Each(func(j int, rowSelection *goquery.Selection) {
+			row := []string{}
+			rowSelection.Find("th, td").Each(func(k int, cellSelection *goquery.Selection) {
+				row = append(row, cellSelection.Text())
+			})
+			tableRows = append(tableRows, row)
+		})
+		tableData = append(tableData, tableRows...)
+	})
 
 	c.mu.Lock()
 	c.Data[pageURL] = append(c.Data[pageURL], title)
+	c.Data[pageURL] = append(c.Data[pageURL], metaDescription)
+	c.Data[pageURL] = append(c.Data[pageURL], metaKeywords)
 	c.Data[pageURL] = append(c.Data[pageURL], headings...)
 	c.Data[pageURL] = append(c.Data[pageURL], paragraphs...)
+	c.Data[pageURL] = append(c.Data[pageURL], strings.Join(imageURLs, ","))
+	c.Data[pageURL] = append(c.Data[pageURL], strings.Join(externalLinks, ","))
+	c.Data[pageURL] = append(c.Data[pageURL], fmt.Sprintf("%v", tableData))
 	c.mu.Unlock()
 
 	fmt.Printf("Processing page: %s\n", pageURL)
@@ -137,7 +172,12 @@ func (c *Crawler) resolveURL(baseURL, href string) string {
 }
 
 func main() {
-	baseURL := "https://coachtony.medium.com/" //example medium page you can scrape :)
+	if len(os.Args) < 2 {
+		fmt.Println("Please provide a URL as a command line argument.")
+		os.Exit(1)
+	}
+
+	baseURL := os.Args[1]
 	depth := 3
 	maxConcurrency := 10
 	delay := 500 * time.Millisecond
@@ -151,12 +191,24 @@ func main() {
 
 	fmt.Printf("Crawling completed in %s\n", elapsed)
 
-	// Print the extracted data
-	for url, data := range crawler.Data {
-		fmt.Printf("URL: %s\n", url)
-		fmt.Printf("Title: %s\n", data[0])
-		fmt.Printf("Headings: %v\n", data[1:len(data)-len(data)/3])
-		fmt.Printf("Paragraphs: %v\n", data[len(data)-len(data)/3:])
-		fmt.Println("------------------------")
+	csvFile, err := os.Create("crawl_results.csv")
+	if err != nil {
+		fmt.Printf("Error creating CSV file: %v\n", err)
+		os.Exit(1)
 	}
+	defer csvFile.Close()
+
+	writer := csv.NewWriter(csvFile)
+	defer writer.Flush()
+
+	headers := []string{"URL", "Title", "Meta Description", "Meta Keywords", "Headings", "Paragraphs", "Image URLs", "External Links", "Table Data"}
+	writer.Write(headers)
+
+	for url, data := range crawler.Data {
+		row := []string{url}
+		row = append(row, data...)
+		writer.Write(row)
+	}
+
+	fmt.Println("Results saved to crawl_results.csv")
 }
